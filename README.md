@@ -1,6 +1,7 @@
-<img src="Resources/AppIcon.png" width="128" height="128" alt="TextLens app icon">
-
-# TextLens
+<div align="center">
+  <img src="Resources/AppIcon.png" width="128" height="128" alt="TextLens app icon">
+  <h1>TextLens</h1>
+</div>
 
 **Offline macOS OCR for copying text from your screen**
 
