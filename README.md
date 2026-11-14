@@ -2,13 +2,15 @@
 
 # TextLens
 
-Copy text from anywhere on your screen. Select a region, recognize it offline with Apple Vision, and paste it into any app.
+**Offline macOS OCR for copying text from your screen**
 
-**macOS 14+ · Apple Silicon · Signed and notarized downloads**
+TextLens is a menu bar app for screen text recognition on macOS. Select a region, let Apple Vision recognize the text on your Mac, then paste it into any app. Screenshots are processed locally; nothing is uploaded for OCR.
 
-## Install
+**macOS 14 Sonoma or later · Apple Silicon · Signed and notarized release**
 
-### Homebrew
+## Install with Homebrew
+
+Homebrew is the recommended way to install TextLens:
 
 ```sh
 brew tap MRZ07/textlens https://github.com/MRZ07/TextLens
@@ -16,49 +18,47 @@ brew trust --cask MRZ07/textlens/textlens
 brew install --cask MRZ07/textlens/textlens
 ```
 
-Homebrew manages the installation, but does not install app updates in the background. To get a newer release:
+Homebrew manages the installation, but it does not install app updates in the background. Update TextLens when you choose:
 
 ```sh
 brew upgrade --cask MRZ07/textlens/textlens
 ```
 
-This upgrades only TextLens. Future releases need a higher version number; if the same version is replaced, use `brew reinstall --cask MRZ07/textlens/textlens` instead.
+This upgrades only TextLens. New releases need a higher version number. If a release is replaced with the same version, run `brew reinstall --cask MRZ07/textlens/textlens` instead.
 
-### Download
+### Direct download
 
-**[Download signed and notarized TextLens for macOS (.zip)](https://github.com/MRZ07/TextLens/releases/download/v0.1.0/TextLens-0.1.0.zip)**
+Prefer not to use Homebrew? **[Download the signed and notarized TextLens ZIP](https://github.com/MRZ07/TextLens/releases/download/v0.1.0/TextLens-0.1.0.zip)**, unzip it, drag **TextLens.app** into **Applications**, and launch it. Browse all versions on the [Releases page](https://github.com/MRZ07/TextLens/releases).
 
-Unzip the download, drag **TextLens.app** into **Applications**, then launch it. This release is distributed as a ZIP; all versions are listed under [Releases](https://github.com/MRZ07/TextLens/releases).
-
-## Use
+## Copy text from your screen
 
 1. Click the menu bar icon and choose **Capture text**, or press **⌘⌥⇧T**.
-2. Drag over the text you want to copy.
-3. Paste. Recognized text is copied automatically.
+2. Drag over the text you want to recognize.
+3. Paste—the recognized text is copied automatically.
 
-Normal capture preserves line breaks. Choose **Capture text without line breaks**, or press **⌘⌥⇧L**, to join the recognized lines into a single line.
+Normal capture preserves line breaks. Choose **Capture text without line breaks**, or press **⌘⌥⇧L**, to join the recognized lines into one line. Change or clear each shortcut independently in **Settings → Shortcuts**; the current shortcuts appear beside their menu commands.
 
-Change or clear each shortcut independently in **Settings → Shortcuts**. The current combinations appear beside their capture commands in the menu. The menu also opens searchable **Capture history**, **Settings**, and **About TextLens**. Closing those windows leaves the app running; use **Quit TextLens** to exit.
-
-**Settings → General** controls automatic clipboard copying, success notifications, and notification sound. All three are enabled by default. With auto-copy off, use the Copy button in Capture History. Notifications show a preview of the recognized text and may be visible on the lock screen. macOS permission is required; Focus and system notification settings may suppress banners or sound. Disabling notifications also prevents their sound.
-
-TextLens asks once whether it should **start when you log in**. Nothing is enabled before you agree. Change this later in **Settings → General → Startup**. If macOS requires approval, the app links to Login Items settings and shows the pending status instead of claiming startup is active.
+The menu also opens searchable **Capture History**, **Settings**, and **About TextLens**. Closing those windows leaves TextLens running; choose **Quit TextLens** to exit.
 
 ## Features
 
-- Offline, on-device text recognition with Apple Vision.
-- Native screen-region selection and automatic clipboard copy.
-- Two customizable global shortcuts: preserve line breaks or copy as a single line.
-- Default-enabled auto-copy and success notifications with recognized-text previews.
-- Optional notification sound and opt-in launch at login.
+- On-device OCR with Apple Vision—no upload required for recognition.
+- Select a screen region and copy recognized text to the clipboard.
+- Two customizable global shortcuts, with or without line breaks.
 - Search and copy again from the newest 100 captures.
-- History/privacy controls and a link to macOS screen-recording settings.
+- Optional automatic clipboard copying, success notifications, and notification sound; these are enabled by default.
+- Opt-in start at login, with controls in Settings.
+- History and privacy controls, plus a link to macOS screen-recording settings.
 
-## Privacy and permissions
+## Privacy, permissions, and OCR limits
 
-If macOS blocks a capture, allow TextLens in **System Settings → Privacy & Security → Screen & System Audio Recording**. Screenshots are temporary; only recognized text is saved in `~/Library/Application Support/TextLens/capture-history.json`. Nothing is uploaded for OCR. Clear saved text in Settings or Capture History.
+If macOS blocks a capture, allow TextLens in **System Settings → Privacy & Security → Screen & System Audio Recording**. Screenshots are temporary; only recognized text is saved in `~/Library/Application Support/TextLens/capture-history.json`. Clear saved text in Settings or Capture History.
 
-**OCR limits:** this version uses Vision's accurate mode and language correction, but has no language picker or explicit language configuration. Recognition is biased toward English; other languages, small fonts, and handwriting may be less reliable.
+**Clipboard and notifications:** automatic clipboard copying, success notifications, and notification sound are enabled by default and can be changed in **Settings → General**. With automatic copying off, use the Copy button in Capture History. Notifications include a preview of recognized text and may appear on the lock screen. macOS notification permission is required; Focus and system notification settings may suppress banners or sound. Turning notifications off also prevents their sound.
+
+**Start at login:** TextLens asks once whether it should start when you log in; it is not enabled before you agree. Change this in **Settings → General → Startup**. If macOS requires approval, TextLens links to Login Items settings and shows the pending status instead of claiming startup is active.
+
+**OCR limits:** TextLens uses Vision's accurate mode and language correction, but this version has no language picker or explicit language configuration. Recognition is biased toward English; other languages, small fonts, and handwriting may be less reliable.
 
 ## Build and release from source
 
@@ -76,7 +76,7 @@ The local build is unsigned and includes the icon and SwiftPM resource bundles. 
 ./scripts/package-release.sh
 ```
 
-Use `TEXTLENS_VERSION` for a different version. The script prints the ZIP's SHA-256; update the Cask to match the published download. Homebrew upgrades are manual with `brew upgrade --cask MRZ07/textlens/textlens`; TextLens does not install a background updater.
+Set `TEXTLENS_VERSION` to use a different version. The script prints the ZIP's SHA-256; update the Cask to match the published download. TextLens does not install a background updater; use `brew upgrade --cask MRZ07/textlens/textlens` to upgrade a Homebrew installation.
 
 ## Credits and license
 
