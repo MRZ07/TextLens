@@ -1,28 +1,53 @@
 import AppKit
 import KeyboardShortcuts
 import SwiftUI
+import TextLensCore
 
 struct SettingsView: View {
     @ObservedObject var model: CaptureViewModel
+    @ObservedObject var preferences: CapturePreferences
     @ObservedObject var loginItemController: LoginItemController
     @Environment(\.openWindow) private var openWindow
+    @State private var selection: SettingsSection? = .capture
     @State private var confirmingClear = false
 
+    private var section: SettingsSection { selection ?? .capture }
+
     var body: some View {
-        TabView {
-            generalSettings
-                .tabItem { Label("General", systemImage: "gearshape") }
+        HStack(spacing: 0) {
+            sidebar
+                .frame(width: 172)
 
-            shortcutSettings
-                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+            Divider()
 
-            historyAndPrivacySettings
-                .tabItem { Label("History & Privacy", systemImage: "lock.shield") }
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(section.rawValue)
+                        .font(.system(.title, design: .rounded, weight: .semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    Text(section.detail)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 22)
+
+                Form {
+                    switch section {
+                    case .capture: captureSettings
+                    case .shortcuts: shortcutSettings
+                    case .general: generalSettings
+                    case .privacy: privacySettings
+                    }
+                }
+                .formStyle(.grouped)
+                .id(section)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(minWidth: 520, idealWidth: 560, minHeight: 440, idealHeight: 500)
-        .onAppear {
-            loginItemController.refresh()
-        }
+        .frame(minWidth: 660, idealWidth: 710, minHeight: 460, idealHeight: 510)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .onAppear { loginItemController.refresh() }
         .confirmationDialog(
             "Clear all captures?",
             isPresented: $confirmingClear,
@@ -34,171 +59,179 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This removes saved text from this Mac. It can't be undone.")
+            Text("This permanently removes saved text from this Mac.")
         }
     }
 
-    private var generalSettings: some View {
-        Form {
-            Section {
-                HStack(alignment: .top, spacing: 14) {
-                    Image(nsImage: NSApplication.shared.applicationIconImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 52, height: 52)
-                        .accessibilityHidden(true)
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            List(SettingsSection.allCases, selection: $selection) { section in
+                Label {
+                    Text(section.rawValue)
+                } icon: {
+                    Image(systemName: section.symbol)
+                        .foregroundStyle(.secondary)
+                }
+                .tag(section)
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("TextLens")
-                            .font(.title2.weight(.semibold))
+            HStack(spacing: 8) {
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable()
+                    .frame(width: 28, height: 28)
+                    .clipShape(.rect(cornerRadius: 6))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("TextLens")
+                        .font(.subheadline.weight(.semibold))
+                    if let appVersion {
                         Text("Version \(appVersion)")
-                            .font(.callout)
+                            .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("Select text on your screen and paste it into any app.")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    Spacer(minLength: 0)
                 }
-
-                Button("About TextLens…") {
-                    NSApplication.shared.orderFrontStandardAboutPanel(options: [:])
-                }
-            } header: {
-                Text("About")
+                Spacer(minLength: 0)
             }
+            .padding(14)
+            .accessibilityElement(children: .combine)
+        }
+        .background(.regularMaterial)
+    }
 
-            Section("Quick access") {
-                Button {
-                    model.capture()
-                } label: {
-                    Label("Capture text now", systemImage: "viewfinder")
+    @ViewBuilder
+    private var captureSettings: some View {
+        Section("Recognition") {
+            Picker("Text language", selection: $preferences.recognitionLanguage) {
+                Text("System language").tag(CapturePreferences.systemLanguage)
+                Text("Detect automatically").tag("")
+                ForEach(Self.languageOptions, id: \.self) { language in
+                    Text(Self.languageName(language)).tag(language)
                 }
-                .disabled(model.isWorking)
-
-                Button {
-                    openWindow(id: "capture-history")
-                } label: {
-                    Label("Open Capture History…", systemImage: "clock.arrow.circlepath")
+                if !preferences.recognitionLanguage.isEmpty,
+                   preferences.recognitionLanguage != CapturePreferences.systemLanguage,
+                   !Self.languageOptions.contains(preferences.recognitionLanguage) {
+                    Text(Self.languageName(preferences.recognitionLanguage)).tag(preferences.recognitionLanguage)
                 }
             }
+            Picker("Recognition mode", selection: $preferences.recognitionMode) {
+                Text("Accurate").tag(VisionTextRecognizer.Mode.accurate)
+                Text("Fast").tag(VisionTextRecognizer.Mode.fast)
+            }
 
-            Section("Startup") {
-                Toggle(isOn: loginAtStartupBinding) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Open TextLens at login")
-                        Text(loginItemDescription)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .disabled(loginItemUnavailable)
+            Text(recognitionHelp)
+                .font(.callout)
+                .foregroundStyle(.secondary)
 
-                if loginItemRequiresApproval {
-                    Button("Open Login Items Settings…") {
-                        loginItemController.openSystemSettings()
-                    }
-                }
+            Toggle(isOn: $preferences.correctsLanguage) {
+                SettingsLabel(
+                    title: "Correct spelling",
+                    detail: "Uses Vision’s language correction. Leave this off for names, codes, and exact spelling."
+                )
+            }
+        }
 
-                if let errorMessage = loginItemController.errorMessage {
-                    Label {
-                        Text(errorMessage)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                    }
+        Section("Clipboard") {
+            Toggle(isOn: $preferences.autoCopy) {
+                SettingsLabel(
+                    title: "Copy text automatically",
+                    detail: "When off, use Capture History to review and copy text."
+                )
+            }
+        }
+    }
+
+    private var recognitionHelp: String {
+        if preferences.recognitionLanguage.isEmpty {
+            return "Automatic language detection uses Accurate mode and may take longer for mixed text."
+        }
+        if preferences.recognitionMode == .accurate {
+            return "Best for small text, images, and video. TextLens retries weak results with enhanced contrast."
+        }
+        return "Tries a quicker pass for clear text in supported languages. Difficult text uses Accurate mode."
+    }
+
+    @ViewBuilder
+    private var shortcutSettings: some View {
+        Section("Global shortcuts") {
+            KeyboardShortcuts.Recorder("Capture text", name: .captureText)
+            KeyboardShortcuts.Recorder("Capture as one line", name: .captureTextWithoutLineBreaks)
+            Text("Each shortcut can be changed or cleared independently.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var generalSettings: some View {
+        Section("Startup") {
+            Toggle(isOn: loginAtStartupBinding) {
+                SettingsLabel(title: "Open TextLens at login", detail: loginItemDescription)
+            }
+            .disabled(loginItemController.state == .unavailable)
+
+            if loginItemController.state == .requiresApproval {
+                Button("Open Login Items Settings…", action: loginItemController.openSystemSettings)
+            }
+
+            if let errorMessage = loginItemController.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle")
                     .font(.callout)
                     .foregroundStyle(.red)
-                }
-            }
-
-            Section("After processing") {
-                PreferenceToggle(
-                    preferences: model.preferences,
-                    title: "Automatically copy recognized text",
-                    detail: "When off, recognized text remains in Capture History.",
-                    keyPath: \.autoCopy
-                )
-
-                PreferenceToggle(
-                    preferences: model.preferences,
-                    title: "Show a notification after successful processing",
-                    detail: "Notifications include a short preview of recognized text, which macOS may show on screen or on the Lock Screen. They require notification permission; Focus may suppress them.",
-                    keyPath: \.notifyOnSuccess
-                )
-
-                PreferenceToggle(
-                    preferences: model.preferences,
-                    title: "Play a sound with notifications",
-                    detail: "macOS notification settings and Focus may still silence the sound.",
-                    keyPath: \.playNotificationSound,
-                    disabledWhenNotificationsOff: true
-                )
-            }
-        }
-        .formStyle(.grouped)
-        .scenePadding()
-    }
-
-    private var shortcutSettings: some View {
-        Form {
-            Section("Capture with line breaks") {
-                KeyboardShortcuts.Recorder("Shortcut", name: .captureText)
-
-                Text("Keeps the line breaks from the selected area.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Section("Capture without line breaks") {
-                KeyboardShortcuts.Recorder("Shortcut", name: .captureTextWithoutLineBreaks)
-
-                Text("Joins the recognized text into one line. Set or clear this shortcut independently.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .formStyle(.grouped)
-        .scenePadding()
+
+        Section("Notifications") {
+            Toggle(isOn: $preferences.notifyOnSuccess) {
+                SettingsLabel(
+                    title: "Show capture notifications",
+                    detail: "Text previews can appear on screen or on the Lock Screen."
+                )
+            }
+
+            Toggle("Play notification sound", isOn: $preferences.playNotificationSound)
+                .disabled(!preferences.notifyOnSuccess)
+        }
+
+        Section {
+            Button("About TextLens…") {
+                NSApplication.shared.orderFrontStandardAboutPanel(options: [:])
+            }
+        }
     }
 
-    private var historyAndPrivacySettings: some View {
-        Form {
-            Section("Local history") {
-                LabeledContent("Saved captures", value: "\(model.history.count)")
+    @ViewBuilder
+    private var privacySettings: some View {
+        Section("Local history") {
+            LabeledContent {
+                Text(model.history.count, format: .number)
+                    .monospacedDigit()
+            } label: {
+                SettingsLabel(
+                    title: "Saved captures",
+                    detail: "TextLens keeps the newest 100 text captures on this Mac."
+                )
+            }
 
-                Text("The newest 100 captures are stored on this Mac. You can clear them at any time. Screen selections are processed locally and aren't uploaded.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button("Clear Local History…", role: .destructive) {
-                    confirmingClear = true
-                }
+            Button("Open Capture History…") { openWindow(id: "capture-history") }
+            Button("Clear Local History…", role: .destructive) { confirmingClear = true }
                 .disabled(model.history.isEmpty || model.isWorking)
-            }
+        }
 
-            Section("Screen recording access") {
-                Text("If macOS denies a capture, allow TextLens in System Settings under Privacy & Security → Screen & System Audio Recording, then try again.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button("Open Screen & System Audio Recording Settings…", systemImage: "arrow.up.forward.app") {
-                    openScreenRecordingSettings()
-                }
+        Section("Screen recording access") {
+            Text("macOS requires screen recording access to capture a region. Recognition runs on this Mac.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Button("Open Screen Recording Settings…", systemImage: "arrow.up.forward.app") {
+                CaptureViewModel.openScreenRecordingSettings()
             }
         }
-        .formStyle(.grouped)
-        .scenePadding()
     }
 
-    private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+    private var appVersion: String? {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
 
     private var loginAtStartupBinding: Binding<Bool> {
@@ -211,65 +244,62 @@ struct SettingsView: View {
         )
     }
 
-    private var loginItemUnavailable: Bool {
-        if case .unavailable = loginItemController.state {
-            return true
-        }
-        return false
-    }
-
-    private var loginItemRequiresApproval: Bool {
-        if case .requiresApproval = loginItemController.state {
-            return true
-        }
-        return false
-    }
-
     private var loginItemDescription: String {
         switch loginItemController.state {
-        case .notRegistered:
-            "Enable this to make TextLens available in the menu bar after you sign in."
-        case .enabled:
-            "TextLens opens automatically when you sign in."
-        case .requiresApproval:
-            "Waiting for approval in System Settings. TextLens won't start at login until allowed."
-        case .unavailable:
-            "Launch at login is unavailable for this installation."
+        case .notRegistered: "Start TextLens in the menu bar when you sign in."
+        case .enabled: "TextLens opens automatically when you sign in."
+        case .requiresApproval: "Approve TextLens in Login Items to finish setup."
+        case .unavailable: "Launch at login is unavailable for this installation."
         }
     }
 
-    private func openScreenRecordingSettings() {
-        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") else {
-            return
-        }
-        NSWorkspace.shared.open(url)
+    private static let languageOptions = VisionTextRecognizer.supportedLanguages.sorted {
+        languageName($0).localizedStandardCompare(languageName($1)) == .orderedAscending
+    }
+
+    private static func languageName(_ identifier: String) -> String {
+        Locale.current.localizedString(forIdentifier: identifier) ?? identifier
     }
 }
 
-private struct PreferenceToggle: View {
-    @ObservedObject var preferences: CapturePreferences
-    let title: String
-    let detail: String
-    let keyPath: ReferenceWritableKeyPath<CapturePreferences, Bool>
-    var disabledWhenNotificationsOff = false
+private enum SettingsSection: String, CaseIterable, Identifiable {
+    case capture = "Capture"
+    case shortcuts = "Shortcuts"
+    case general = "General"
+    case privacy = "History & Privacy"
 
-    var body: some View {
-        Toggle(isOn: preferenceBinding) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                Text(detail)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+    var id: Self { self }
+
+    var symbol: String {
+        switch self {
+        case .capture: "text.viewfinder"
+        case .shortcuts: "keyboard"
+        case .general: "gearshape"
+        case .privacy: "lock.shield"
         }
-        .disabled(disabledWhenNotificationsOff && !preferences.notifyOnSuccess)
     }
 
-    private var preferenceBinding: Binding<Bool> {
-        Binding(
-            get: { preferences[keyPath: keyPath] },
-            set: { preferences[keyPath: keyPath] = $0 }
-        )
+    var detail: String {
+        switch self {
+        case .capture: "Recognition, language, and clipboard behavior."
+        case .shortcuts: "Start a capture from any app."
+        case .general: "Startup and notifications."
+        case .privacy: "Local captures and macOS permissions."
+        }
+    }
+}
+
+private struct SettingsLabel: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+            Text(detail)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

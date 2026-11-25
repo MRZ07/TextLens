@@ -1,7 +1,9 @@
+import AppKit
 import Combine
 import Foundation
 import KeyboardShortcuts
 import TextLensCore
+import UniformTypeIdentifiers
 
 enum CapturePhase: Equatable {
     case idle
@@ -21,6 +23,11 @@ private enum CaptureTextMode: Equatable {
     case singleLine
 }
 
+private enum CaptureSource {
+    case screen
+    case image(URL)
+}
+
 enum FeedbackTone: Equatable {
     case neutral
     case success
@@ -32,29 +39,40 @@ struct CaptureFeedback {
     let title: String
     let detail: String
     let tone: FeedbackTone
+    var needsScreenRecordingAccess = false
+
+    var symbol: String {
+        switch tone {
+        case .neutral: "text.viewfinder"
+        case .success: "checkmark.circle"
+        case .warning: "exclamationmark.triangle"
+        case .error: "exclamationmark.circle"
+        }
+    }
 }
 
 @MainActor
 final class CaptureViewModel: ObservableObject {
     @Published private(set) var phase: CapturePhase = .idle
     @Published private(set) var feedback = CaptureFeedback(
-        title: "Ready when you are",
-        detail: "Select a region on screen and TextLens will copy the words for you.",
+        title: "Ready to capture",
+        detail: "Select an area of your screen or open an image to read its text.",
         tone: .neutral
     )
     @Published private(set) var history: [CapturedText] = []
     @Published private(set) var historyLoadError: String?
     @Published var searchText = ""
+    @Published private var isChoosingImage = false
 
     private let screenCapture: any ScreenCapturing
-    private let recognizer: any TextRecognizing
+    private let recognizer: (any TextRecognizing)?
     private let clipboard: any ClipboardWriting
     private let historyStore: CaptureHistoryStore
     let preferences: CapturePreferences
     private let notificationService: any CaptureNotificationSending
     private var captureShortcutTasks: [Task<Void, Never>] = []
 
-    var isWorking: Bool { phase.isWorking }
+    var isWorking: Bool { phase.isWorking || isChoosingImage }
 
     var filteredHistory: [CapturedText] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -64,7 +82,7 @@ final class CaptureViewModel: ObservableObject {
 
     init(
         screenCapture: any ScreenCapturing = MacOSScreenCapture(),
-        recognizer: any TextRecognizing = VisionTextRecognizer(),
+        recognizer: (any TextRecognizing)? = nil,
         clipboard: any ClipboardWriting = SystemClipboard(),
         historyStore: CaptureHistoryStore = CaptureHistoryStore(),
         preferences: CapturePreferences? = nil,
@@ -100,27 +118,72 @@ final class CaptureViewModel: ObservableObject {
     }
 
     func capture() {
-        startCapture(mode: .preserveLineBreaks)
+        startCapture(from: .screen, mode: .preserveLineBreaks)
     }
 
     func captureWithoutLineBreaks() {
-        startCapture(mode: .singleLine)
+        startCapture(from: .screen, mode: .singleLine)
     }
 
-    private func startCapture(mode: CaptureTextMode) {
+    func chooseImage() {
         guard !isWorking else { return }
+        isChoosingImage = true
+
+        let panel = NSOpenPanel()
+        panel.title = "Read text from an image"
+        panel.prompt = "Read Text"
+        panel.allowedContentTypes = [.image]
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        panel.begin { [weak self] response in
+            guard let self else { return }
+            self.isChoosingImage = false
+            if response == .OK, let url = panel.url {
+                self.importImage(at: url)
+            }
+        }
+    }
+
+    func importImage(at url: URL) {
+        startCapture(from: .image(url), mode: .preserveLineBreaks)
+    }
+
+    static func openScreenRecordingSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func startCapture(from source: CaptureSource, mode: CaptureTextMode) {
+        guard !isWorking else { return }
+        let recognizer = recognizer ?? VisionTextRecognizer(
+            mode: preferences.recognitionMode,
+            language: preferences.preferredRecognitionLanguage,
+            correctsLanguage: preferences.correctsLanguage
+        )
         let autoCopy = preferences.autoCopy
         let notifyOnSuccess = preferences.notifyOnSuccess
         let playNotificationSound = preferences.playNotificationSound
-        phase = .capturing
-        feedback = CaptureFeedback(
-            title: "Choose a region…",
-            detail: "Drag over the text you want to capture.",
-            tone: .neutral
-        )
+        switch source {
+        case .screen:
+            phase = .capturing
+            feedback = CaptureFeedback(
+                title: "Choose a region…",
+                detail: "Drag around the text. Press Escape to cancel.",
+                tone: .neutral
+            )
+        case .image:
+            phase = .recognizing
+            feedback = CaptureFeedback(
+                title: "Opening image…",
+                detail: "TextLens is loading the selected image.",
+                tone: .neutral
+            )
+        }
 
         Task { [weak self] in
             await self?.performCapture(
+                from: source,
+                recognizer: recognizer,
                 autoCopy: autoCopy,
                 notifyOnSuccess: notifyOnSuccess,
                 playNotificationSound: playNotificationSound,
@@ -181,35 +244,61 @@ final class CaptureViewModel: ObservableObject {
     }
 
     private func performCapture(
+        from source: CaptureSource,
+        recognizer: any TextRecognizing,
         autoCopy: Bool,
         notifyOnSuccess: Bool,
         playNotificationSound: Bool,
         mode: CaptureTextMode
     ) async {
         let imageData: Data
-        do {
-            guard let capturedImage = try await screenCapture.captureRegion() else {
-                phase = .idle
+        switch source {
+        case .screen:
+            do {
+                guard let capturedImage = try await screenCapture.captureRegion() else {
+                    phase = .idle
+                    feedback = CaptureFeedback(
+                        title: "Capture cancelled",
+                        detail: "Choose Capture Text to select another region.",
+                        tone: .neutral
+                    )
+                    return
+                }
+                imageData = capturedImage
+            } catch let error as ScreenRecordingAccessRequired {
+                phase = .failed
                 feedback = CaptureFeedback(
-                    title: "Capture cancelled",
-                    detail: "Nothing was saved or copied.",
-                    tone: .neutral
+                    title: "Screen recording access required",
+                    detail: error.localizedDescription,
+                    tone: .error,
+                    needsScreenRecordingAccess: true
+                )
+                return
+            } catch {
+                presentError(
+                    title: "Couldn't capture the screen",
+                    detail: "\(error.localizedDescription) Try another region or open a saved image."
                 )
                 return
             }
-            imageData = capturedImage
-        } catch {
-            presentError(
-                title: "Couldn't capture the screen",
-                detail: "Try selecting a region again. \(error.localizedDescription)"
-            )
-            return
+        case .image(let url):
+            do {
+                imageData = try await Task.detached(priority: .userInitiated) {
+                    try Data(contentsOf: url)
+                }.value
+            } catch {
+                presentError(
+                    title: "Couldn't open the image",
+                    detail: error.localizedDescription
+                )
+                return
+            }
         }
 
         phase = .recognizing
         feedback = CaptureFeedback(
             title: "Reading text…",
-            detail: "TextLens is recognizing words on this Mac.",
+            detail: "TextLens is recognizing text on this Mac.",
             tone: .neutral
         )
 
@@ -222,7 +311,7 @@ final class CaptureViewModel: ObservableObject {
         } catch {
             presentError(
                 title: "Couldn't read text from that area",
-                detail: "Try a larger, sharper selection. \(error.localizedDescription)"
+                detail: error.localizedDescription
             )
             return
         }
@@ -230,7 +319,7 @@ final class CaptureViewModel: ObservableObject {
         guard !recognizedText.isEmpty else {
             presentError(
                 title: "No text found",
-                detail: "Try selecting a larger area with clearer text."
+                detail: "Try a tighter crop around the text or choose its language in Settings."
             )
             return
         }
@@ -256,7 +345,7 @@ final class CaptureViewModel: ObservableObject {
                 title: autoCopy ? "Text copied" : "Text recognized",
                 detail: autoCopy
                     ? "It's ready to paste and has been saved in local history."
-                    : "It's available in local history. Use Copy Again to copy it.",
+                    : "Open Capture History to review and copy it.",
                 tone: .success
             )
             if notifyOnSuccess {

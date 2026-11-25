@@ -12,19 +12,22 @@ struct TextLensApp: App {
     var body: some Scene {
         MenuBarExtra {
             Button(action: model.capture) {
-                Label(model.isWorking ? "Working…" : "Capture text", systemImage: "viewfinder")
+                Label("Capture Text", systemImage: "viewfinder")
             }
             .globalKeyboardShortcut(.captureText)
             .disabled(model.isWorking)
 
             Button(action: model.captureWithoutLineBreaks) {
-                Label("Capture text without line breaks", systemImage: "text.alignleft")
+                Label("Capture as One Line", systemImage: "text.alignleft")
             }
             .globalKeyboardShortcut(.captureTextWithoutLineBreaks)
             .disabled(model.isWorking)
 
+            Button("Read Text from Image…", systemImage: "photo", action: model.chooseImage)
+                .disabled(model.isWorking)
+
             Section {
-                Button("Capture history…", systemImage: "clock.arrow.circlepath") {
+                Button("Capture History…", systemImage: "clock.arrow.circlepath") {
                     openWindow(id: "capture-history")
                 }
 
@@ -34,9 +37,17 @@ struct TextLensApp: App {
                 .keyboardShortcut(",", modifiers: .command)
             }
 
-            Section("Status") {
-                Label(model.feedback.title, systemImage: statusSymbol)
-                    .disabled(true)
+            if model.phase != .idle || model.feedback.tone != .neutral {
+                Section("Last activity") {
+                    Button(model.feedback.title, systemImage: model.feedback.symbol) {
+                        openWindow(id: "capture-history")
+                    }
+                    if model.feedback.needsScreenRecordingAccess {
+                        Button("Open Screen Recording Settings…", systemImage: "arrow.up.forward.app") {
+                            CaptureViewModel.openScreenRecordingSettings()
+                        }
+                    }
+                }
             }
 
             Divider()
@@ -50,28 +61,27 @@ struct TextLensApp: App {
             }
             .keyboardShortcut("q", modifiers: .command)
         } label: {
-            Label("TextLens", systemImage: "text.viewfinder")
+            Label("TextLens", systemImage: menuBarSymbol)
         }
         .menuBarExtraStyle(.menu)
 
         Window("Capture History", id: "capture-history") {
             CaptureHistoryView(model: model)
         }
-        .defaultSize(width: 560, height: 520)
+        .defaultSize(width: 760, height: 490)
 
         Settings {
-            SettingsView(model: model, loginItemController: applicationDelegate.loginItemController)
+            SettingsView(
+                model: model,
+                preferences: model.preferences,
+                loginItemController: applicationDelegate.loginItemController
+            )
         }
     }
 
-    private var statusSymbol: String {
-        switch model.phase {
-        case .idle: "info.circle"
-        case .capturing: "viewfinder"
-        case .recognizing: "text.viewfinder"
-        case .recognized: "text.viewfinder"
-        case .copied: model.feedback.tone == .warning ? "exclamationmark.triangle" : "checkmark.circle"
-        case .failed: "exclamationmark.circle"
-        }
+    private var menuBarSymbol: String {
+        if model.isWorking { return "ellipsis.circle" }
+        if model.feedback.tone == .error { return "exclamationmark.circle" }
+        return "text.viewfinder"
     }
 }

@@ -3,26 +3,53 @@ import TextLensCore
 
 struct CaptureHistoryView: View {
     @ObservedObject var model: CaptureViewModel
+    @State private var selection: CapturedText.ID?
     @State private var confirmingClear = false
 
+    private var selectedCapture: CapturedText? {
+        model.filteredHistory.first { $0.id == selection }
+    }
+
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                feedbackSummary
-                historyContent
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            if model.phase != .idle || model.feedback.tone != .neutral {
+                feedbackBanner
+                Divider()
             }
-            .navigationTitle("Capture History")
-            .searchable(text: $model.searchText, prompt: "Search captures")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button(role: .destructive) {
-                        confirmingClear = true
-                    } label: {
-                        Label("Clear History", systemImage: "trash")
-                    }
-                    .disabled(model.history.isEmpty || model.isWorking)
+            historyContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(minWidth: 620, minHeight: 380)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .searchable(text: $model.searchText, placement: .toolbar, prompt: "Search captures")
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button(action: model.capture) {
+                    Label("Capture Text", systemImage: "viewfinder")
                 }
+                .disabled(model.isWorking)
+
+                Button(action: model.chooseImage) {
+                    Label("Read Text from Image", systemImage: "photo")
+                }
+                .disabled(model.isWorking)
+
+                Button(role: .destructive) {
+                    confirmingClear = true
+                } label: {
+                    Label("Clear History", systemImage: "trash")
+                }
+                .disabled(model.history.isEmpty || model.isWorking)
+            }
+        }
+        .onChange(of: model.filteredHistory.map(\.id), initial: true) { _, current in
+            if selectedCapture == nil {
+                selection = current.first
+            }
+        }
+        .onChange(of: model.history.first?.id) { _, latest in
+            if model.filteredHistory.first?.id == latest {
+                selection = latest
             }
         }
         .confirmationDialog(
@@ -36,7 +63,7 @@ struct CaptureHistoryView: View {
             }
             Button("Cancel", role: .cancel) { }
         } message: {
-            Text("This removes saved text from this Mac. It can't be undone.")
+            Text("This permanently removes saved text from this Mac.")
         }
     }
 
@@ -46,112 +73,139 @@ struct CaptureHistoryView: View {
             ContentUnavailableView {
                 Label("History unavailable", systemImage: "exclamationmark.triangle")
             } description: {
-                Text("TextLens couldn't read its local history. \(error)")
+                Text(error)
             } actions: {
-                Button("Try Again") {
-                    model.reloadHistory()
-                }
+                Button("Reload History", action: model.reloadHistory)
             }
         } else if model.history.isEmpty {
-            ContentUnavailableView(
-                "No captures yet",
-                systemImage: "text.viewfinder",
-                description: Text("Text you capture will be saved here for quick access.")
-            )
+            ContentUnavailableView {
+                Label("No captures yet", systemImage: "text.viewfinder")
+            } description: {
+                Text("Select a region on screen or read text from an image.")
+            } actions: {
+                Button("Capture Text", action: model.capture)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.isWorking)
+                Button("Open Image…", action: model.chooseImage)
+                    .disabled(model.isWorking)
+            }
         } else if model.filteredHistory.isEmpty {
-            ContentUnavailableView(
-                "No matches",
-                systemImage: "magnifyingglass",
-                description: Text("Try another word or clear your search.")
-            )
+            ContentUnavailableView.search(text: model.searchText)
         } else {
-            List {
-                Section("\(model.filteredHistory.count) \(model.filteredHistory.count == 1 ? "capture" : "captures")") {
-                    ForEach(model.filteredHistory) { item in
-                        HistoryRow(item: item, isWorking: model.isWorking) {
-                            model.copyAgain(item)
+            HSplitView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(model.searchText.isEmpty ? "Recent captures" : "Search results")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 14)
+                        .padding(.top, 12)
+                        .padding(.bottom, 6)
+                        .accessibilityAddTraits(.isHeader)
+
+                    List(model.filteredHistory, selection: $selection) { item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.text)
+                                .lineLimit(2)
+                            Text(item.capturedAt, format: .dateTime.month().day().hour().minute())
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
+                        .padding(.vertical, 5)
+                        .tag(item.id)
                     }
+                    .listStyle(.sidebar)
+                    .scrollContentBackground(.hidden)
+                }
+                .background(.regularMaterial)
+                .frame(minWidth: 210, idealWidth: 245, maxWidth: 275)
+
+                if let selectedCapture {
+                    captureDetail(selectedCapture)
+                } else {
+                    ContentUnavailableView("Select a capture", systemImage: "text.alignleft")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .listStyle(.inset)
         }
     }
 
-    private var feedbackSummary: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: feedbackSymbol)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(feedbackColor)
-                .frame(width: 20)
-                .accessibilityHidden(true)
+    private func captureDetail(_ item: CapturedText) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Captured text")
+                        .font(.system(.title2, design: .rounded, weight: .semibold))
+                    Text(item.capturedAt, format: .dateTime.year().month().day().hour().minute())
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    model.copyAgain(item)
+                } label: {
+                    Label("Copy Text", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(model.isWorking)
+            }
+            .padding(20)
+
+            Divider()
+            ScrollView {
+                Text(item.text)
+                    .font(.body)
+                    .lineSpacing(4)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(20)
+            }
+            .id(item.id)
+        }
+        .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var feedbackBanner: some View {
+        HStack(alignment: .center, spacing: 11) {
+            Group {
+                if model.phase.isWorking {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: model.feedback.symbol)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(feedbackColor)
+                }
+            }
+            .frame(width: 20)
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(model.feedback.title)
-                    .font(.system(.subheadline, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                 Text(model.feedback.detail)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            .accessibilityElement(children: .combine)
 
             Spacer(minLength: 0)
+
+            if model.feedback.needsScreenRecordingAccess {
+                Button("Open Screen Recording Settings", action: CaptureViewModel.openScreenRecordingSettings)
+            }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
         .background(feedbackColor.opacity(0.08))
-        .accessibilityElement(children: .combine)
     }
 
     private var feedbackColor: Color {
         switch model.feedback.tone {
-        case .neutral: Color.accentColor
-        case .success: Color.green
-        case .warning: Color.orange
-        case .error: Color.red
+        case .neutral: .accentColor
+        case .success: .green
+        case .warning: .orange
+        case .error: .red
         }
-    }
-
-    private var feedbackSymbol: String {
-        switch model.phase {
-        case .idle: "info.circle"
-        case .capturing: "viewfinder"
-        case .recognizing: "text.viewfinder"
-        case .recognized: "text.viewfinder"
-        case .copied: model.feedback.tone == .warning ? "exclamationmark.triangle" : "checkmark.circle"
-        case .failed: "exclamationmark.circle"
-        }
-    }
-}
-
-private struct HistoryRow: View {
-    let item: CapturedText
-    let isWorking: Bool
-    let copy: () -> Void
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(item.text)
-                    .font(.body)
-                    .lineLimit(3)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text(item.capturedAt, style: .relative)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Button(action: copy) {
-                Label("Copy", systemImage: "doc.on.doc")
-            }
-            .buttonStyle(.borderless)
-            .disabled(isWorking)
-            .help("Copy this capture again")
-            .accessibilityLabel("Copy capture from \(item.capturedAt.formatted(date: .abbreviated, time: .shortened)) again")
-        }
-        .padding(.vertical, 5)
     }
 }

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="270" viewBox="0 0 920 270" role="img" aria-labelledby="title description">
+  <title id="title">TextLens capture workflow</title>
+  <desc id="description">A selected region containing the words Platform 4 and Departure 08:42 becomes pasteable text.</desc>
+  <defs>
+    <linearGradient id="canvas" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#17283a"/>
+      <stop offset="1" stop-color="#122033"/>
+    </linearGradient>
+    <linearGradient id="board" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#2e4354"/>
+      <stop offset="1" stop-color="#1a2939"/>
+    </linearGradient>
+    <pattern id="dots" width="16" height="16" patternUnits="userSpaceOnUse">
+      <circle cx="3" cy="3" r="1" fill="#a9cbe6" opacity=".12"/>
+    </pattern>
+  </defs>
+  <rect width="920" height="270" rx="22" fill="url(#canvas)"/>
+  <rect x="1" y="1" width="918" height="268" rx="21" fill="url(#dots)" stroke="#31475e"/>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, Arial, sans-serif">
+    <rect x="45" y="42" width="360" height="185" rx="13" fill="#1d2a38" stroke="#415b73"/>
+    <path d="M45 76h360" stroke="#415b73"/>
+    <g fill="#7390ab">
+      <circle cx="62" cy="59" r="3"/>
+      <circle cx="73" cy="59" r="3"/>
+      <circle cx="84" cy="59" r="3"/>
+    </g>
+    <text x="100" y="64" fill="#c4d5e5" font-size="13" font-weight="600">On your screen</text>
+
+    <rect x="59" y="89" width="332" height="124" rx="6" fill="url(#board)"/>
+    <path d="M59 185h332m-332-8 332-67m-332 95 200-116" stroke="#8da7bc" stroke-opacity=".13"/>
+    <rect x="97" y="105" width="260" height="91" rx="6" fill="#101d2c"/>
+    <path d="M121 112h-16v16m228-16h16v16m0 45v16h-16m-212 0h-16v-16"
+          fill="none" stroke="#87ceff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="123" y="148" fill="#f0f6fd" font-size="25" font-weight="700">Platform 4</text>
+    <text x="124" y="173" fill="#b8cfe2" font-size="16">Departure 08:42</text>
+
+    <circle cx="460" cy="135" r="22" fill="#263d52" stroke="#4a6a87"/>
+    <path d="M452 135h15m-6-6 6 6-6 6" fill="none" stroke="#a8d8ff" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="515" y="42" width="360" height="185" rx="13" fill="#edf4fa" stroke="#91afc9"/>
+    <path d="M515 76h360" stroke="#c1d4e4"/>
+    <path d="M536 54h3v-2h6v2h3v12h-12z" fill="none" stroke="#486b8a" stroke-width="1.4" stroke-linejoin="round"/>
+    <text x="559" y="64" fill="#26465f" font-size="13" font-weight="600">On your clipboard</text>
+
+    <rect x="539" y="109" width="311" height="91" rx="6" fill="#ffffff"/>
+    <path d="M539 115v79" stroke="#5597c8" stroke-width="2"/>
+    <text x="560" y="149" fill="#172d43" font-size="25" font-weight="700">Platform 4</text>
+    <text x="561" y="174" fill="#3b5870" font-size="16">Departure 08:42</text>
+  </g>
+</svg>

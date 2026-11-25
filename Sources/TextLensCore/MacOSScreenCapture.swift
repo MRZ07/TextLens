@@ -1,4 +1,13 @@
+import CoreGraphics
 import Foundation
+
+public struct ScreenRecordingAccessRequired: LocalizedError {
+    public init() {}
+
+    public var errorDescription: String? {
+        "Allow TextLens in Screen & System Audio Recording, then reopen TextLens and try again."
+    }
+}
 
 public struct MacOSScreenCapture: ScreenCapturing {
     public init() {}
@@ -10,7 +19,7 @@ public struct MacOSScreenCapture: ScreenCapturing {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-        process.arguments = ["-i", "-s", outputURL.path]
+        process.arguments = ["-i", "-s", "-x", "-tpng", outputURL.path]
         let errorPipe = Pipe()
         process.standardError = errorPipe
         let execution = ScreenCaptureExecution(process: process)
@@ -38,6 +47,9 @@ public struct MacOSScreenCapture: ScreenCapturing {
         )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         guard status == 0 else {
+            if !CGPreflightScreenCaptureAccess() {
+                throw ScreenRecordingAccessRequired()
+            }
             throw MacOSScreenCaptureError.failed(status: status, details: errorOutput)
         }
 
@@ -107,7 +119,7 @@ private enum MacOSScreenCaptureError: LocalizedError {
             return "Could not start macOS screen capture. Confirm /usr/sbin/screencapture is available and try again. Details: \(details)"
         case .failed(let status, let details):
             let detailText = details.isEmpty ? "" : " Details: \(details)"
-            return "macOS screen capture failed (exit code \(status)). If access was denied, enable TextLens under System Settings > Privacy & Security > Screen & System Audio Recording, then retry.\(detailText)"
+            return "macOS screen capture failed (exit code \(status)).\(detailText)"
         case .couldNotReadImage(let details):
             return "The selected screenshot was created but could not be read. Try capturing the region again. Details: \(details)"
         }

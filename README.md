@@ -1,17 +1,21 @@
 <div align="center">
-  <img src="Resources/AppIcon.png" width="128" height="128" alt="TextLens app icon">
+  <img src="Resources/AppIcon.png" width="104" height="104" alt="TextLens app icon">
   <h1>TextLens</h1>
+  <p><strong>Copy the text you see on your Mac.</strong></p>
+  <p>Fast, offline OCR for screenshots, scanned PDFs, and paused video.</p>
+  <p><a href="#install"><strong>Install with Homebrew</strong></a> · <a href="https://github.com/MRZ07/TextLens/releases/latest">Download for Mac</a></p>
+  <p>macOS 14 Sonoma or later · Apple silicon · Signed and notarized releases</p>
 </div>
 
-**Offline macOS OCR for copying text from your screen**
+![A screen selection reading “Platform 4 — Departure 08:42” becomes pasteable text.](Resources/ReadmeCapture.svg)
 
-TextLens is a menu bar app for screen text recognition on macOS. Select a region, let Apple Vision recognize the text on your Mac, then paste it into any app. Screenshots are processed locally; nothing is uploaded for OCR.
+## A speed-focused TRex alternative
 
-**macOS 14 Sonoma or later · Apple Silicon · Signed and notarized release**
+TextLens is built for the screen-to-clipboard workflow. Use either of two global shortcuts to keep the original line breaks or paste everything as one line. Recognition runs locally with Apple Vision, and you can search and recopy recent captures from the menu bar.
 
-## Install with Homebrew
+Accurate mode handles small or stylized text and retries weak results with enhanced contrast. Fast mode tries a quicker pass for clear text in supported languages and switches to Accurate when the result is uncertain. Start with your system language, choose a specific language, or enable automatic detection for mixed-language images.
 
-Homebrew is the recommended way to install TextLens:
+## Install
 
 ```sh
 brew tap MRZ07/textlens https://github.com/MRZ07/TextLens
@@ -19,51 +23,36 @@ brew trust --cask MRZ07/textlens/textlens
 brew install --cask MRZ07/textlens/textlens
 ```
 
-Homebrew manages the installation, but it does not install app updates in the background. Update TextLens when you choose:
+For a direct install, download the signed ZIP, unzip it, and drag **TextLens.app** to **Applications**. [Download the latest release](https://github.com/MRZ07/TextLens/releases/latest).
+
+## Capture, then paste
+
+| What you want to do | Where to start |
+| --- | --- |
+| Capture a region and keep its line breaks | <kbd>⌘</kbd><kbd>⌥</kbd><kbd>⇧</kbd><kbd>T</kbd> |
+| Capture a region as one line | <kbd>⌘</kbd><kbd>⌥</kbd><kbd>⇧</kbd><kbd>L</kbd> |
+| Extract text from a saved screenshot or photo | Menu bar → **Read Text from Image…** |
+| Find and copy text from an earlier capture | Menu bar → **Capture History…** |
+
+For a screen capture, drag around the text, then paste it with <kbd>⌘</kbd><kbd>V</kbd>. You can change either shortcut in **Settings → Shortcuts**. If automatic copying is off, use **Copy Text** in Capture History.
+
+## Privacy and settings
+
+- **On-device recognition.** Images stay on your Mac. TextLens saves the newest 100 text captures and discards the temporary screenshots. Clear saved text under **Settings → History & Privacy**.
+- **Screen recording access.** Allow TextLens under **System Settings → Privacy & Security → Screen & System Audio Recording**, then reopen the app if macOS asks. You can read saved images without granting screen recording access.
+- **Notifications and startup.** Control text previews, sound, and launch at login under **Settings → General**. macOS notification settings and Focus can suppress banners or sound. Text previews can appear on the Lock Screen.
+- **Recognition and clipboard.** Set the text language, mode, optional spelling correction, and automatic copying under **Settings → Capture**.
+
+## Update or build from source
+
+Homebrew updates run when you ask for them.
 
 ```sh
+brew update
 brew upgrade --cask MRZ07/textlens/textlens
 ```
 
-This upgrades only TextLens. New releases need a higher version number. If a release is replaced with the same version, run `brew reinstall --cask MRZ07/textlens/textlens` instead.
-
-### Direct download
-
-Prefer not to use Homebrew? **[Download the signed and notarized TextLens ZIP](https://github.com/MRZ07/TextLens/releases/download/v0.1.0/TextLens-0.1.0.zip)**, unzip it, drag **TextLens.app** into **Applications**, and launch it. Browse all versions on the [Releases page](https://github.com/MRZ07/TextLens/releases).
-
-## Copy text from your screen
-
-1. Click the menu bar icon and choose **Capture text**, or press **⌘⌥⇧T**.
-2. Drag over the text you want to recognize.
-3. Paste—the recognized text is copied automatically.
-
-Normal capture preserves line breaks. Choose **Capture text without line breaks**, or press **⌘⌥⇧L**, to join the recognized lines into one line. Change or clear each shortcut independently in **Settings → Shortcuts**; the current shortcuts appear beside their menu commands.
-
-The menu also opens searchable **Capture History**, **Settings**, and **About TextLens**. Closing those windows leaves TextLens running; choose **Quit TextLens** to exit.
-
-## Features
-
-- On-device OCR with Apple Vision—no upload required for recognition.
-- Select a screen region and copy recognized text to the clipboard.
-- Two customizable global shortcuts, with or without line breaks.
-- Search and copy again from the newest 100 captures.
-- Optional automatic clipboard copying, success notifications, and notification sound; these are enabled by default.
-- Opt-in start at login, with controls in Settings.
-- History and privacy controls, plus a link to macOS screen-recording settings.
-
-## Privacy, permissions, and OCR limits
-
-If macOS blocks a capture, allow TextLens in **System Settings → Privacy & Security → Screen & System Audio Recording**. Screenshots are temporary; only recognized text is saved in `~/Library/Application Support/TextLens/capture-history.json`. Clear saved text in Settings or Capture History.
-
-**Clipboard and notifications:** automatic clipboard copying, success notifications, and notification sound are enabled by default and can be changed in **Settings → General**. With automatic copying off, use the Copy button in Capture History. Notifications include a preview of recognized text and may appear on the lock screen. macOS notification permission is required; Focus and system notification settings may suppress banners or sound. Turning notifications off also prevents their sound.
-
-**Start at login:** TextLens asks once whether it should start when you log in; it is not enabled before you agree. Change this in **Settings → General → Startup**. If macOS requires approval, TextLens links to Login Items settings and shows the pending status instead of claiming startup is active.
-
-**OCR limits:** TextLens uses Vision's accurate mode and language correction, but this version has no language picker or explicit language configuration. Recognition is biased toward English; other languages, small fonts, and handwriting may be less reliable.
-
-## Build and release from source
-
-Install Xcode Command Line Tools with Swift. Release builds are tested with Xcode 27.2.
+To test and build a local app with Xcode and Swift:
 
 ```sh
 swift test
@@ -71,16 +60,20 @@ swift test
 open dist/TextLens.app
 ```
 
-The local build is unsigned and includes the icon and SwiftPM resource bundles. To create a signed, notarized ZIP release, install a **Developer ID Application** identity and configure the `TextLensNotary` keychain profile, then run:
+## Publish a release
+
+Use `scripts/publish.sh` for every release. Set the next version in [VERSION](VERSION) and commit it with the app changes on `main`. Use a Mac with Xcode, a **Developer ID Application** identity, the `TextLensNotary` keychain profile, and an authenticated GitHub CLI with write access to this repository.
 
 ```sh
-./scripts/package-release.sh
+./scripts/publish.sh /path/to/release-notes.md
 ```
 
-Set `TEXTLENS_VERSION` to use a different version. The script prints the ZIP's SHA-256; update the Cask to match the published download. TextLens does not install a background updater; use `brew upgrade --cask MRZ07/textlens/textlens` to upgrade a Homebrew installation.
+Omit the notes path to use GitHub-generated notes. The script runs the test suite, signs and notarizes the app, sets the Homebrew cask version and SHA-256, and creates a tagged GitHub release. It verifies the public ZIP before pushing the cask to `main`. If interrupted, rerun the same command from the same checkout.
 
-## Credits and license
+After publishing, run the Homebrew update commands above to verify the upgrade on a Mac with the previous version installed.
 
-Inspired by [TRex](https://github.com/amebalabs/TRex); independently implemented and not affiliated with its authors. Global shortcuts use [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts).
+## Credits
+
+TextLens was inspired by TRex and is independently developed. [TRex by amebalabs](https://github.com/amebalabs/TRex). Global shortcuts use [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts).
 
 There is currently no license file. Public visibility does not grant permission to reuse or redistribute the code or icon.

@@ -13,15 +13,61 @@ final class CaptureViewModelTests: XCTestCase {
         XCTAssertTrue(first.autoCopy)
         XCTAssertTrue(first.notifyOnSuccess)
         XCTAssertTrue(first.playNotificationSound)
+        XCTAssertEqual(first.recognitionMode, .accurate)
+        XCTAssertEqual(first.recognitionLanguage, CapturePreferences.systemLanguage)
+        XCTAssertFalse(first.correctsLanguage)
 
         first.autoCopy = false
         first.notifyOnSuccess = false
         first.playNotificationSound = false
+        first.recognitionMode = .fast
+        first.recognitionLanguage = ""
+        first.correctsLanguage = true
 
         let restored = CapturePreferences(defaults: defaults)
         XCTAssertFalse(restored.autoCopy)
         XCTAssertFalse(restored.notifyOnSuccess)
         XCTAssertFalse(restored.playNotificationSound)
+        XCTAssertEqual(restored.recognitionMode, .fast)
+        XCTAssertNil(restored.preferredRecognitionLanguage)
+        XCTAssertTrue(restored.correctsLanguage)
+    }
+
+    func testImportReadsFileWithoutTakingScreenCapture() async throws {
+        let (store, directory) = try makeHistoryStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("image.png")
+        let input = Data([17, 24, 95])
+        try input.write(to: url)
+        let clipboard = StubClipboard()
+        let model = makeModel(
+            screen: FixedScreenCapture(failure: CaptureStubError.capture),
+            recognizer: FileDataRecognizer(expectedData: input),
+            historyStore: store,
+            clipboard: clipboard
+        )
+
+        model.importImage(at: url)
+        await waitFor { !model.isWorking }
+
+        XCTAssertEqual(clipboard.copiedTexts, ["First line\nSecond line"])
+        XCTAssertEqual(try store.load().map(\.text), clipboard.copiedTexts)
+    }
+
+    func testMissingScreenRecordingPermissionShowsSettingsAction() async throws {
+        let (store, directory) = try makeHistoryStore()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = makeModel(
+            screen: FixedScreenCapture(failure: ScreenRecordingAccessRequired()),
+            historyStore: store
+        )
+
+        model.capture()
+        await waitFor { !model.isWorking }
+
+        XCTAssertEqual(model.phase, .failed)
+        XCTAssertTrue(model.feedback.needsScreenRecordingAccess)
+        XCTAssertTrue(try store.load().isEmpty)
     }
 
     func testSuccessfulCaptureCopiesOnceSavesHistoryAndNotifiesOnce() async throws {
@@ -212,7 +258,7 @@ final class CaptureViewModelTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: captureDirectory) }
         let captureNotifications = StubNotifications()
         let captureModel = makeModel(
-            screen: FixedScreenCapture(failure: .capture),
+            screen: FixedScreenCapture(failure: CaptureStubError.capture),
             historyStore: captureStore,
             notifications: captureNotifications
         )
@@ -450,9 +496,10 @@ final class CaptureViewModelTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) async {
-        for _ in 0..<1_000 {
+        let deadline = ContinuousClock.now + .seconds(2)
+        while ContinuousClock.now < deadline {
             if condition() { return }
-            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(1))
         }
         XCTFail("Timed out waiting for capture workflow", file: file, line: line)
     }
@@ -460,11 +507,20 @@ final class CaptureViewModelTests: XCTestCase {
 
 private struct FixedScreenCapture: ScreenCapturing {
     var imageData: Data? = Data([1])
-    var failure: CaptureStubError?
+    var failure: (any Error)?
 
     func captureRegion() async throws -> Data? {
         if let failure { throw failure }
         return imageData
+    }
+}
+
+private struct FileDataRecognizer: TextRecognizing {
+    let expectedData: Data
+
+    func recognize(imageData: Data) async throws -> String {
+        XCTAssertEqual(imageData, expectedData)
+        return "First line\nSecond line"
     }
 }
 
