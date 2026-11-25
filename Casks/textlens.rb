@@ -1,6 +1,6 @@
 cask "textlens" do
-  version "0.2.0"
-  sha256 "f642a03482e09c6066d993349991cafd883c4249f609837d83d4993325ecc823"
+  version "0.2.1"
+  sha256 "5e3c9c30205a87cb455968faed749b5a946dff7c77530121d016453b60dbaaee"
 
   url "https://github.com/MRZ07/TextLens/releases/download/v#{version}/TextLens-#{version}.zip"
   name "TextLens"
