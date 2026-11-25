@@ -6,10 +6,23 @@ import KeyboardShortcuts
 struct TextLensApp: App {
     @NSApplicationDelegateAdaptor(TextLensApplicationDelegate.self) private var applicationDelegate
     @StateObject private var model = CaptureViewModel()
-    @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
+        let model = model
+        let openWindow = openWindow
+        let loginItemController = applicationDelegate.loginItemController
+        let _ = applicationDelegate.configureSettings {
+            let controller = NSHostingController(rootView: SettingsView(
+                model: model,
+                preferences: model.preferences,
+                loginItemController: loginItemController,
+                openHistory: { openWindow(id: "capture-history") }
+            ))
+            controller.sizingOptions = []
+            return controller
+        }
+
         MenuBarExtra {
             Button(action: model.capture) {
                 Label("Capture Text", systemImage: "viewfinder")
@@ -31,10 +44,8 @@ struct TextLensApp: App {
                     openWindow(id: "capture-history")
                 }
 
-                Button("Settings…", systemImage: "gearshape") {
-                    openSettings()
-                }
-                .keyboardShortcut(",", modifiers: .command)
+                Button("Settings…", systemImage: "gearshape", action: applicationDelegate.showSettings)
+                    .keyboardShortcut(",", modifiers: .command)
             }
 
             if model.phase != .idle || model.feedback.tone != .neutral {
@@ -69,13 +80,11 @@ struct TextLensApp: App {
             CaptureHistoryView(model: model)
         }
         .defaultSize(width: 760, height: 490)
-
-        Settings {
-            SettingsView(
-                model: model,
-                preferences: model.preferences,
-                loginItemController: applicationDelegate.loginItemController
-            )
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…", action: applicationDelegate.showSettings)
+                    .keyboardShortcut(",", modifiers: .command)
+            }
         }
     }
 

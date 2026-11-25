@@ -12,6 +12,10 @@ public struct ScreenRecordingAccessRequired: LocalizedError {
 public struct MacOSScreenCapture: ScreenCapturing {
     public init() {}
 
+    public static var hasScreenRecordingAccess: Bool {
+        CGPreflightScreenCaptureAccess()
+    }
+
     public func captureRegion() async throws -> Data? {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("TextLens-\(UUID().uuidString).png")
@@ -47,7 +51,7 @@ public struct MacOSScreenCapture: ScreenCapturing {
         )?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
         guard status == 0 else {
-            if !CGPreflightScreenCaptureAccess() {
+            if !Self.hasScreenRecordingAccess {
                 throw ScreenRecordingAccessRequired()
             }
             throw MacOSScreenCaptureError.failed(status: status, details: errorOutput)

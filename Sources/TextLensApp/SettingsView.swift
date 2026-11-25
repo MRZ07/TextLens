@@ -7,37 +7,33 @@ struct SettingsView: View {
     @ObservedObject var model: CaptureViewModel
     @ObservedObject var preferences: CapturePreferences
     @ObservedObject var loginItemController: LoginItemController
-    @Environment(\.openWindow) private var openWindow
-    @State private var selection: SettingsSection? = .capture
+    let openHistory: () -> Void
+    @State private var section: SettingsSection = .general
+    @State private var hoveredSection: SettingsSection?
+    @FocusState private var focusedSection: SettingsSection?
+    @State private var hasScreenRecordingAccess = false
     @State private var confirmingClear = false
-
-    private var section: SettingsSection { selection ?? .capture }
 
     var body: some View {
         HStack(spacing: 0) {
             sidebar
-                .frame(width: 172)
+                .frame(width: 178)
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(section.rawValue)
-                        .font(.system(.title, design: .rounded, weight: .semibold))
-                        .accessibilityAddTraits(.isHeader)
-                    Text(section.detail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 22)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(section.rawValue)
+                    .font(.system(.largeTitle, design: .rounded, weight: .semibold))
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
 
                 Form {
                     switch section {
                     case .capture: captureSettings
                     case .shortcuts: shortcutSettings
                     case .general: generalSettings
-                    case .privacy: privacySettings
+                    case .history: historySettings
                     }
                 }
                 .formStyle(.grouped)
@@ -45,9 +41,17 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(minWidth: 660, idealWidth: 710, minHeight: 460, idealHeight: 510)
         .background(Color(nsColor: .windowBackgroundColor))
-        .onAppear { loginItemController.refresh() }
+        .onAppear {
+            loginItemController.refresh()
+            refreshScreenRecordingAccess()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshScreenRecordingAccess()
+        }
+        .onChange(of: section) { _, page in
+            if page == .general { refreshScreenRecordingAccess() }
+        }
         .confirmationDialog(
             "Clear all captures?",
             isPresented: $confirmingClear,
@@ -65,39 +69,71 @@ struct SettingsView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
-            List(SettingsSection.allCases, selection: $selection) { section in
-                Label {
-                    Text(section.rawValue)
-                } icon: {
-                    Image(systemName: section.symbol)
-                        .foregroundStyle(.secondary)
-                }
-                .tag(section)
-            }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-
-            HStack(spacing: 8) {
+            HStack(spacing: 9) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable()
-                    .frame(width: 28, height: 28)
-                    .clipShape(.rect(cornerRadius: 6))
+                    .frame(width: 32, height: 32)
+                    .clipShape(.rect(cornerRadius: 7))
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("TextLens")
-                        .font(.subheadline.weight(.semibold))
-                    if let appVersion {
-                        Text("Version \(appVersion)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer(minLength: 0)
+                Text("TextLens")
+                    .font(.headline)
             }
-            .padding(14)
-            .accessibilityElement(children: .combine)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
+            .padding(.bottom, 10)
+
+            VStack(spacing: 3) {
+                ForEach(SettingsSection.allCases) { page in
+                    sidebarButton(page)
+                }
+            }
+            .padding(.horizontal, 10)
+            Spacer(minLength: 0)
+
+            if let appVersion {
+                Text("Version \(appVersion)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+            }
         }
         .background(.regularMaterial)
+    }
+
+    private func sidebarButton(_ page: SettingsSection) -> some View {
+        let selected = section == page
+        let shape = RoundedRectangle(cornerRadius: 8)
+        return Button {
+            section = page
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: page.symbol)
+                    .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+                    .frame(width: 18)
+                    .accessibilityHidden(true)
+                Text(page.rawValue)
+                    .fontWeight(selected ? .semibold : .regular)
+            }
+            .padding(.horizontal, 9)
+            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+            .background(
+                selected ? Color.accentColor.opacity(0.14) : Color.primary.opacity(hoveredSection == page ? 0.06 : 0),
+                in: shape
+            )
+            .overlay {
+                if focusedSection == page {
+                    shape.strokeBorder(Color.accentColor, lineWidth: 2)
+                }
+            }
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .focused($focusedSection, equals: page)
+        .onHover { hoveredSection = $0 ? page : nil }
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -165,6 +201,10 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var generalSettings: some View {
+        Section("Permissions") {
+            screenRecordingSettings
+        }
+
         Section("Startup") {
             Toggle(isOn: loginAtStartupBinding) {
                 SettingsLabel(title: "Open TextLens at login", detail: loginItemDescription)
@@ -202,8 +242,57 @@ struct SettingsView: View {
         }
     }
 
+    private var screenRecordingSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "record.circle")
+                    .font(.system(size: 18))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 32, height: 32)
+                    .background(Color.accentColor.opacity(0.10), in: .rect(cornerRadius: 8))
+                    .accessibilityHidden(true)
+
+                SettingsLabel(
+                    title: "Screen Recording",
+                    detail: hasScreenRecordingAccess
+                        ? "TextLens can capture a region of your screen."
+                        : "Allow TextLens to capture a region of your screen. Reopen TextLens if macOS asks."
+                )
+
+                Spacer(minLength: 8)
+                screenRecordingStatus
+            }
+
+            Button("Open System Settings…", systemImage: "arrow.up.forward.app") {
+                CaptureViewModel.openScreenRecordingSettings()
+            }
+            .accessibilityHint("Opens the Screen Recording permission in System Settings")
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var screenRecordingStatus: some View {
+        let color: Color = hasScreenRecordingAccess ? .green : .orange
+        return Label {
+            Text(hasScreenRecordingAccess ? "Granted" : "Not granted")
+        } icon: {
+            Image(systemName: hasScreenRecordingAccess ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                .foregroundStyle(color)
+        }
+        .font(.caption.weight(.semibold))
+        .fixedSize()
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(color.opacity(0.12), in: .capsule)
+        .accessibilityLabel(hasScreenRecordingAccess ? "Screen recording granted" : "Screen recording not granted")
+    }
+
+    private func refreshScreenRecordingAccess() {
+        hasScreenRecordingAccess = MacOSScreenCapture.hasScreenRecordingAccess
+    }
+
     @ViewBuilder
-    private var privacySettings: some View {
+    private var historySettings: some View {
         Section("Local history") {
             LabeledContent {
                 Text(model.history.count, format: .number)
@@ -215,18 +304,9 @@ struct SettingsView: View {
                 )
             }
 
-            Button("Open Capture History…") { openWindow(id: "capture-history") }
+            Button("Open Capture History…", action: openHistory)
             Button("Clear Local History…", role: .destructive) { confirmingClear = true }
                 .disabled(model.history.isEmpty || model.isWorking)
-        }
-
-        Section("Screen recording access") {
-            Text("macOS requires screen recording access to capture a region. Recognition runs on this Mac.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Button("Open Screen Recording Settings…", systemImage: "arrow.up.forward.app") {
-                CaptureViewModel.openScreenRecordingSettings()
-            }
         }
     }
 
@@ -263,10 +343,10 @@ struct SettingsView: View {
 }
 
 private enum SettingsSection: String, CaseIterable, Identifiable {
+    case general = "General"
     case capture = "Capture"
     case shortcuts = "Shortcuts"
-    case general = "General"
-    case privacy = "History & Privacy"
+    case history = "History"
 
     var id: Self { self }
 
@@ -275,16 +355,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .capture: "text.viewfinder"
         case .shortcuts: "keyboard"
         case .general: "gearshape"
-        case .privacy: "lock.shield"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .capture: "Recognition, language, and clipboard behavior."
-        case .shortcuts: "Start a capture from any app."
-        case .general: "Startup and notifications."
-        case .privacy: "Local captures and macOS permissions."
+        case .history: "clock.arrow.circlepath"
         }
     }
 }

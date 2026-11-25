@@ -38,8 +38,8 @@ For a screen capture, drag around the text, then paste it with <kbd>⌘</kbd><kb
 
 ## Privacy and settings
 
-- **On-device recognition.** Images stay on your Mac. TextLens saves the newest 100 text captures and discards the temporary screenshots. Clear saved text under **Settings → History & Privacy**.
-- **Screen recording access.** Allow TextLens under **System Settings → Privacy & Security → Screen & System Audio Recording**, then reopen the app if macOS asks. You can read saved images without granting screen recording access.
+- **On-device recognition.** Images stay on your Mac. TextLens saves the newest 100 text captures and discards the temporary screenshots. Clear saved text under **Settings → History**.
+- **Screen recording access.** Open TextLens to see your access status under **Settings → General**. Use **Open System Settings…** to manage access, then reopen TextLens if macOS asks. You can read saved images without granting screen recording access.
 - **Notifications and startup.** Control text previews, sound, and launch at login under **Settings → General**. macOS notification settings and Focus can suppress banners or sound. Text previews can appear on the Lock Screen.
 - **Recognition and clipboard.** Set the text language, mode, optional spelling correction, and automatic copying under **Settings → Capture**.
 

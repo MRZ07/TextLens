@@ -3,8 +3,17 @@ import AppKit
 @MainActor
 final class TextLensApplicationDelegate: NSObject, NSApplicationDelegate {
     let loginItemController = LoginItemController()
+    private var settingsContent: (() -> NSViewController)?
+    private var settingsWindow: NSWindow?
+    private var needsSettingsPresentation = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let launchEvent = NSAppleEventManager.shared().currentAppleEvent
+        let launchReason = launchEvent?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
+        if launchReason != keyAELaunchedAsLogInItem {
+            showSettings()
+        }
+
         loginItemController.refresh()
         guard loginItemController.shouldAskOnFirstRun else { return }
 
@@ -24,8 +33,51 @@ final class TextLensApplicationDelegate: NSObject, NSApplicationDelegate {
         presentEnableResult()
     }
 
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        showSettings()
+        return false
+    }
+
     func applicationDidBecomeActive(_ notification: Notification) {
         loginItemController.refresh()
+    }
+
+    func configureSettings(content: @escaping () -> NSViewController) {
+        settingsContent = content
+        if needsSettingsPresentation {
+            needsSettingsPresentation = false
+            Task { showSettings() }
+        }
+    }
+
+    func showSettings() {
+        if settingsWindow == nil {
+            guard let settingsContent else {
+                needsSettingsPresentation = true
+                return
+            }
+            let preferredSize = NSSize(width: 730, height: 560)
+            let window = NSWindow(
+                contentRect: NSRect(origin: .zero, size: preferredSize),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "TextLens Settings"
+            window.contentViewController = settingsContent()
+            window.contentMinSize = NSSize(width: 660, height: 490)
+            window.setContentSize(preferredSize)
+            window.isReleasedWhenClosed = false
+            window.center()
+            window.setFrameAutosaveName("TextLensSettingsWindow")
+            settingsWindow = window
+        }
+
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        if settingsWindow?.isMiniaturized == true {
+            settingsWindow?.deminiaturize(nil)
+        }
+        settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
     private func presentEnableResult() {
