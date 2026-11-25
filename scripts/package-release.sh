@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-APP_VERSION="${TEXTLENS_VERSION:-0.1.0}"
+APP_VERSION="${TEXTLENS_VERSION:-$(cat "$ROOT_DIR/VERSION")}"
 if [[ ! "$APP_VERSION" =~ ^[0-9]+(\.[0-9]+){2}$ ]]; then
 	printf 'Error: TEXTLENS_VERSION must be a three-part numeric version (for example, 0.1.0); got: %s\n' "$APP_VERSION" >&2
 	exit 1
