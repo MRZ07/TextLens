@@ -1,4 +1,5 @@
 import CoreImage
+import CoreML
 import Foundation
 import ImageIO
 import Vision
@@ -9,7 +10,6 @@ public struct VisionTextRecognizer: TextRecognizing {
         case fast
     }
 
-    private static let confident: VNConfidence = 0.75
     private static let imageContext = CIContext()
     public static let supportedLanguages = supportedLanguages(for: .accurate)
     private static let fastLanguages = supportedLanguages(for: .fast)
@@ -18,7 +18,7 @@ public struct VisionTextRecognizer: TextRecognizing {
     private let language: String?
     private let correctsLanguage: Bool
 
-    public init(mode: Mode = .accurate, language: String? = "en-US", correctsLanguage: Bool = false) {
+    public init(mode: Mode = .accurate, language: String? = nil, correctsLanguage: Bool = false) {
         self.mode = mode
         self.language = language
         self.correctsLanguage = correctsLanguage
@@ -67,72 +67,135 @@ public struct VisionTextRecognizer: TextRecognizing {
         let orientation = (properties?[kCGImagePropertyOrientation] as? UInt32)
             .flatMap(CGImagePropertyOrientation.init(rawValue:)) ?? .up
 
-        do {
-            let handler = VNImageRequestHandler(cgImage: image, orientation: orientation)
-            // Vision's fast mode supports fewer scripts. Use it only for a known supported language.
-            if mode == .fast, let language, Self.fastLanguages.contains(language) {
-                let quick = try? candidates(from: handler, request: makeRequest(level: .fast))
-                if let quick, !quick.isEmpty, quick.allSatisfy({ $0.confidence >= Self.confident }) {
-                    return Self.formatRecognizedLines(quick.map(\.string))
-                }
-            }
-
-            let accurate = try candidates(from: handler, request: makeRequest(level: .accurate))
-            if accurate.contains(where: { $0.confidence >= Self.confident }) {
-                return Self.formatRecognizedLines(accurate.map(\.string))
-            }
-
-            if let enhanced = Self.enhancedImage(image, orientation: orientation),
-               let retry = try? candidates(
-                   from: VNImageRequestHandler(cgImage: enhanced),
-                   request: makeRequest(level: .accurate)
-               ), bestConfidence(in: retry) > bestConfidence(in: accurate) {
-                return Self.formatRecognizedLines(retry.map(\.string))
-            }
-            return Self.formatRecognizedLines(accurate.map(\.string))
-        } catch {
-            throw VisionTextRecognitionError.failed(error.localizedDescription)
+        let configuredLanguage = language.flatMap { Self.supportedLanguages.contains($0) ? $0 : nil }
+        var fastResult: RecognitionResult?
+        if mode == .fast, let configuredLanguage, Self.fastLanguages.contains(configuredLanguage) {
+            fastResult = try? recognize(image, orientation: orientation, level: .fast, language: configuredLanguage)
+            if let fastResult, fastResult.isReliable { return fastResult.text }
         }
+
+        let primary: RecognitionResult
+        do {
+            primary = try recognize(image, orientation: orientation, language: configuredLanguage)
+        } catch {
+            return try recoverFromVisionError(
+                error, image: image, orientation: orientation, language: configuredLanguage, fastResult: fastResult
+            )
+        }
+        if primary.isReliable { return primary.text }
+
+        var best = fastResult.map { primary.preferring($0) } ?? primary
+        if configuredLanguage != nil,
+           let detected = try? recognize(image, orientation: orientation, language: nil) {
+            best = best.preferring(detected)
+        }
+
+        if let enhanced = Self.enhancedImage(image, orientation: orientation) {
+            if let processed = try? recognize(enhanced, orientation: .up, language: configuredLanguage) {
+                best = best.preferring(processed)
+            }
+            if !best.isReliable, configuredLanguage != nil,
+               let detected = try? recognize(enhanced, orientation: .up, language: nil) {
+                best = best.preferring(detected)
+            }
+        }
+        return best.text
     }
 
-    private func makeRequest(level: VNRequestTextRecognitionLevel) -> VNRecognizeTextRequest {
+    private func recoverFromVisionError(
+        _ error: Error,
+        image: CGImage,
+        orientation: CGImagePropertyOrientation,
+        language: String?,
+        fastResult: RecognitionResult?
+    ) throws -> String {
+        let cpuResult = try? recognize(image, orientation: orientation, language: language, onCPU: true)
+        if let cpuResult, cpuResult.isReliable { return cpuResult.text }
+
+        let recovered = cpuResult.map { cpu in fastResult.map { cpu.preferring($0) } ?? cpu } ?? fastResult
+        let upright = CIImage(cgImage: image).oriented(orientation)
+        let fallbackImage = orientation == .up ? image : Self.imageContext.createCGImage(upright, from: upright.extent)
+        if let fallbackImage,
+           let text = try? TesseractTextRecognizer.recognize(
+               fallbackImage, language: language, correctsLanguage: correctsLanguage
+           ) {
+            return text.isEmpty ? recovered?.text ?? "" : text
+        }
+        if let recovered { return recovered.text }
+        throw VisionTextRecognitionError.failed(error.localizedDescription)
+    }
+
+    private func recognize(
+        _ image: CGImage,
+        orientation: CGImagePropertyOrientation,
+        level: VNRequestTextRecognitionLevel = .accurate,
+        language: String?,
+        onCPU: Bool = false
+    ) throws -> RecognitionResult {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = level
         request.usesLanguageCorrection = correctsLanguage
-        let supportedLanguages = level == .fast ? Self.fastLanguages : Self.supportedLanguages
-        if let language, supportedLanguages.contains(language) {
+        if let language {
             request.recognitionLanguages = [language]
         } else {
             request.automaticallyDetectsLanguage = true
         }
-        return request
-    }
-
-    private func candidates(
-        from handler: VNImageRequestHandler,
-        request: VNRecognizeTextRequest
-    ) throws -> [VNRecognizedText] {
-        try handler.perform([request])
-        return (request.results ?? []).compactMap { observation in
-            guard let candidate = observation.topCandidates(1).first,
-                  !candidate.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-            return candidate
+        if onCPU {
+            for (stage, devices) in try request.supportedComputeStageDevices {
+                if let cpu = devices.first(where: { if case .cpu = $0 { return true }; return false }) {
+                    request.setComputeDevice(cpu, for: stage)
+                }
+            }
         }
-    }
 
-    private func bestConfidence(in candidates: [VNRecognizedText]) -> VNConfidence {
-        candidates.map(\.confidence).max() ?? 0
+        try VNImageRequestHandler(cgImage: image, orientation: orientation).perform([request])
+        let lines = (request.results ?? []).compactMap { observation -> RecognitionResult.Line? in
+            guard let candidate = observation.topCandidates(1).first else { return nil }
+            let text = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            return RecognitionResult.Line(text: text, confidence: candidate.confidence)
+        }
+        return RecognitionResult(lines: lines)
     }
 
     private static func enhancedImage(_ image: CGImage, orientation: CGImagePropertyOrientation) -> CGImage? {
         let upright = CIImage(cgImage: image).oriented(orientation)
         let longestSide = max(upright.extent.width, upright.extent.height)
-        let scale = longestSide > 2400 ? 2400 / longestSide : min(2, max(1, 1600 / longestSide))
-        let enhanced = upright
-            .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0, kCIInputContrastKey: 1.4])
-            .applyingFilter("CISharpenLuminance", parameters: [kCIInputSharpnessKey: 0.45])
-        return imageContext.createCGImage(enhanced, from: enhanced.extent)
+        let scale = min(3, max(1, 1800 / longestSide))
+        let scaled = upright.applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: scale])
+        let enhanced = scaled
+            .applyingFilter("CIColorControls", parameters: [kCIInputSaturationKey: 0, kCIInputContrastKey: 1.35])
+            .applyingFilter("CISharpenLuminance", parameters: [kCIInputSharpnessKey: 0.35])
+        return imageContext.createCGImage(enhanced, from: scaled.extent.integral)
+    }
+
+    struct RecognitionResult {
+        struct Line {
+            let text: String
+            let confidence: VNConfidence
+        }
+
+        let lines: [Line]
+
+        var text: String {
+            VisionTextRecognizer.formatRecognizedLines(lines.map(\.text))
+        }
+
+        var isReliable: Bool {
+            !lines.isEmpty && lines.allSatisfy { $0.confidence >= 0.8 }
+        }
+
+        private var score: Float {
+            lines.reduce(0) { score, line in
+                // Reward additional readable text while discounting long, low-confidence guesses.
+                let length = Float(min(line.text.count, 40))
+                return score + length * pow(line.confidence, 3)
+            }
+        }
+
+        func preferring(_ other: Self) -> Self {
+            other.score > score || (lines.isEmpty && !other.lines.isEmpty) ? other : self
+        }
     }
 }
 
@@ -143,7 +206,7 @@ private enum VisionTextRecognitionError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidImage: "The image could not be opened. Try a PNG, JPEG, or another format macOS can read."
-        case .failed(let details): "Vision could not read this image. \(details)"
+        case .failed(let details): "The macOS text recognition engine could not process this image. \(details)"
         }
     }
 }

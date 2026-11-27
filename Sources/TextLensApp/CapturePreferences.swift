@@ -35,7 +35,7 @@ final class CapturePreferences: ObservableObject {
         self.defaults = defaults
         recognitionMode = defaults.string(forKey: Self.recognitionModeKey)
             .flatMap(VisionTextRecognizer.Mode.init(rawValue:)) ?? .accurate
-        recognitionLanguage = defaults.string(forKey: Self.recognitionLanguageKey) ?? Self.systemLanguage
+        recognitionLanguage = defaults.string(forKey: Self.recognitionLanguageKey) ?? ""
         correctsLanguage = defaults.bool(forKey: Self.correctsLanguageKey)
         autoCopy = defaults.object(forKey: Self.autoCopyKey) as? Bool ?? true
         notifyOnSuccess = defaults.object(forKey: Self.notifyOnSuccessKey) as? Bool ?? true

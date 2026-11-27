@@ -13,7 +13,7 @@
 
 TextLens is built for the screen-to-clipboard workflow. Use either of two global shortcuts to keep the original line breaks or paste everything as one line. Recognition runs locally with Apple Vision, and you can search and recopy recent captures from the menu bar.
 
-Accurate mode handles small or stylized text and retries weak results with enhanced contrast. Fast mode tries a quicker pass for clear text in supported languages and switches to Accurate when the result is uncertain. Start with your system language, choose a specific language, or enable automatic detection for mixed-language images.
+TextLens detects the language automatically by default. You can also prefer your system language or choose a specific language. Accurate mode retries weak results with enhanced contrast and language detection. With a preferred language, Fast mode tries a quicker pass for clear text and switches to Accurate for uncertain results.
 
 ## Install
 
@@ -41,6 +41,7 @@ For a screen capture, drag around the text, then paste it with <kbd>⌘</kbd><kb
 - **On-device recognition.** Images stay on your Mac. TextLens saves the newest 100 text captures and discards the temporary screenshots. Clear saved text under **Settings → History**.
 - **Screen recording access.** Open TextLens to see your access status under **Settings → General**. Use **Open System Settings…** to manage access, then reopen TextLens if macOS asks. You can read saved images without granting screen recording access.
 - **Notifications and startup.** Control text previews, sound, and launch at login under **Settings → General**. macOS notification settings and Focus can suppress banners or sound. Text previews can appear on the Lock Screen.
+- **OCR recovery.** If Vision fails, TextLens retries on the CPU. It can also use an existing Homebrew installation of Tesseract with the appropriate language data as an offline fallback.
 - **Recognition and clipboard.** Set the text language, mode, optional spelling correction, and automatic copying under **Settings → Capture**.
 
 ## Update or build from source

@@ -16,9 +16,39 @@ final class VisionRecognitionIntegrationTests: XCTestCase {
         )
     }
 
-    private func renderedCoreTextImage(_ text: String) throws -> Data {
-        let width = 1000
-        let height = 180
+    func testRecognizesTightDarkCropInFastMode() async throws {
+        let expectedText = "Build 4827"
+        let imageData = try renderedCoreTextImage(
+            expectedText,
+            width: 162,
+            height: 34,
+            fontSize: 22,
+            background: 0.10,
+            foreground: 0.83
+        )
+
+        let recognizedText = try await VisionTextRecognizer(mode: .fast, language: "en-US")
+            .recognize(imageData: imageData)
+
+        XCTAssertTrue(recognizedText.localizedCaseInsensitiveContains(expectedText), recognizedText)
+    }
+
+    func testBlankImageDoesNotProduceText() async throws {
+        let imageData = try renderedCoreTextImage("", width: 240, height: 90)
+
+        let recognizedText = try await VisionTextRecognizer().recognize(imageData: imageData)
+
+        XCTAssertTrue(recognizedText.isEmpty)
+    }
+
+    private func renderedCoreTextImage(
+        _ text: String,
+        width: Int = 1000,
+        height: Int = 180,
+        fontSize: CGFloat = 54,
+        background: CGFloat = 1,
+        foreground: CGFloat = 0
+    ) throws -> Data {
         guard let context = CGContext(
             data: nil,
             width: width,
@@ -30,12 +60,12 @@ final class VisionRecognitionIntegrationTests: XCTestCase {
         ) else {
             throw ImageRenderError.couldNotCreatePNG
         }
-        context.setFillColor(NSColor.white.cgColor)
+        context.setFillColor(gray: background, alpha: 1)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
-        let systemFont = NSFont.systemFont(ofSize: 54, weight: .medium)
-        let font = CTFontCreateWithName(systemFont.fontName as CFString, 54, nil)
-        let color = CGColor(colorSpace: CGColorSpaceCreateDeviceRGB(), components: [0, 0, 0, 1])!
+        let systemFont = NSFont.systemFont(ofSize: fontSize, weight: .medium)
+        let font = CTFontCreateWithName(systemFont.fontName as CFString, fontSize, nil)
+        let color = CGColor(gray: foreground, alpha: 1)
         let attributedText = NSAttributedString(
             string: text,
             attributes: [
@@ -44,7 +74,7 @@ final class VisionRecognitionIntegrationTests: XCTestCase {
             ]
         )
         let line = CTLineCreateWithAttributedString(attributedText)
-        context.textPosition = CGPoint(x: 28, y: 64)
+        context.textPosition = CGPoint(x: fontSize / 2, y: (CGFloat(height) - fontSize) / 2)
         CTLineDraw(line, context)
 
         guard let cgImage = context.makeImage() else {

@@ -140,8 +140,8 @@ struct SettingsView: View {
     private var captureSettings: some View {
         Section("Recognition") {
             Picker("Text language", selection: $preferences.recognitionLanguage) {
-                Text("System language").tag(CapturePreferences.systemLanguage)
                 Text("Detect automatically").tag("")
+                Text("System language").tag(CapturePreferences.systemLanguage)
                 ForEach(Self.languageOptions, id: \.self) { language in
                     Text(Self.languageName(language)).tag(language)
                 }
@@ -180,10 +180,10 @@ struct SettingsView: View {
 
     private var recognitionHelp: String {
         if preferences.recognitionLanguage.isEmpty {
-            return "Automatic language detection uses Accurate mode and may take longer for mixed text."
+            return "Automatic detection uses Accurate mode to identify the languages in the image."
         }
         if preferences.recognitionMode == .accurate {
-            return "Best for small text, images, and video. TextLens retries weak results with enhanced contrast."
+            return "Best for small text, images, and video. TextLens retries weak results with enhanced contrast and automatic language detection."
         }
         return "Tries a quicker pass for clear text in supported languages. Difficult text uses Accurate mode."
     }

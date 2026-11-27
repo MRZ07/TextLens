@@ -14,14 +14,14 @@ final class CaptureViewModelTests: XCTestCase {
         XCTAssertTrue(first.notifyOnSuccess)
         XCTAssertTrue(first.playNotificationSound)
         XCTAssertEqual(first.recognitionMode, .accurate)
-        XCTAssertEqual(first.recognitionLanguage, CapturePreferences.systemLanguage)
+        XCTAssertNil(first.preferredRecognitionLanguage)
         XCTAssertFalse(first.correctsLanguage)
 
         first.autoCopy = false
         first.notifyOnSuccess = false
         first.playNotificationSound = false
         first.recognitionMode = .fast
-        first.recognitionLanguage = ""
+        first.recognitionLanguage = CapturePreferences.systemLanguage
         first.correctsLanguage = true
 
         let restored = CapturePreferences(defaults: defaults)
@@ -29,7 +29,7 @@ final class CaptureViewModelTests: XCTestCase {
         XCTAssertFalse(restored.notifyOnSuccess)
         XCTAssertFalse(restored.playNotificationSound)
         XCTAssertEqual(restored.recognitionMode, .fast)
-        XCTAssertNil(restored.preferredRecognitionLanguage)
+        XCTAssertEqual(restored.preferredRecognitionLanguage, VisionTextRecognizer.preferredLanguage())
         XCTAssertTrue(restored.correctsLanguage)
     }
 
